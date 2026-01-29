@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Global Travel Pro - Full Version</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --teal: #4db6ac; }
+        body { font-family: -apple-system, sans-serif; background-color: #f7faf9; height: 100dvh; overflow: hidden; }
+        .teal-gradient { background: linear-gradient(135deg, #4db6ac 0%, #80cbc4 100%); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .scroll-container { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .nav-bar { height: calc(65px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #eee; }
+        .pay-tag { font-size: 10px; padding: 2px 8px; border-radius: 99px; font-weight: bold; }
+        .tag-cash { background: #e0f2f1; color: #00897b; }
+        .tag-card { background: #efebe9; color: #5d4037; }
+        .animate-up { animation: fadeInUp 0.3s ease-out forwards; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="flex flex-col h-full w-full max-w-md mx-auto bg-white relative overflow-hidden shadow-2xl">
+        
+        <div v-if="view === 'home'" class="flex-1 flex flex-col p-6 overflow-y-auto no-scrollbar animate-up">
+            <h1 class="text-4xl font-black text-teal-500 italic mb-10 tracking-tighter">My Passport</h1>
+            <div class="space-y-5 pb-10">
+                <div v-for="(trip, id) in allTrips" :key="id" @click="enterTrip(id)"
+                     class="relative overflow-hidden rounded-[2.5rem] p-7 text-white h-44 flex flex-col justify-end shadow-xl teal-gradient transition-all active:scale-95">
+                    <div class="absolute -right-4 -top-6 text-[10rem] opacity-20 rotate-12">{{ trip.config.flag }}</div>
+                    <div class="relative z-10">
+                        <span class="text-[10px] font-bold bg-black/10 px-3 py-1 rounded-full backdrop-blur-sm mb-2 inline-block">
+                            {{ trip.days.length }} DAYS · {{ trip.config.countryName }}
+                        </span>
+                        <h2 class="text-2xl font-black uppercase tracking-tight">{{ trip.config.tripName }}</h2>
+                        <p class="text-[10px] mt-1 font-bold opacity-80 uppercase">Balance: {{ trip.config.symbol }} {{ calculateBalance(trip).toLocaleString() }}</p>
+                    </div>
+                </div>
+                <button @click="openWizard" class="w-full border-2 border-dashed border-gray-200 rounded-[2.5rem] py-14 text-gray-300 flex flex-col items-center hover:bg-gray-50 transition-all">
+                    <i class="fa-solid fa-plus-circle text-3xl mb-3 text-teal-200"></i>
+                    <span class="text-xs font-black tracking-widest uppercase">Start New Trip</span>
+                </button>
+            </div>
+        </div>
+
+        <div v-if="view === 'wizard'" class="fixed inset-0 z-50 bg-white p-8 flex flex-col animate-up">
+            <button @click="view = 'home'" class="mb-8 text-gray-300 self-start"><i class="fa-solid fa-xmark text-2xl"></i></button>
+            <h2 class="text-3xl font-black text-gray-800 mb-8 italic tracking-tighter">PLANNING</h2>
+            <div class="space-y-6 flex-1 overflow-y-auto no-scrollbar">
+                <div class="bg-gray-50 rounded-3xl p-5 border border-gray-100">
+                    <p class="text-[10px] font-black text-gray-400 uppercase mb-3">1. 選擇國家</p>
+                    <input v-model="searchQuery" class="w-full bg-white p-4 rounded-2xl outline-none font-bold text-teal-600 shadow-inner" placeholder="Search Country...">
+                    <div v-if="filteredCountries.length > 0" class="flex flex-wrap gap-2 mt-4">
+                        <div v-for="c in filteredCountries" :key="c.cca3" @click="selectCountry(c)"
+                             class="flex items-center p-3 rounded-2xl border text-xs font-bold transition-all"
+                             :class="selectedCountry?.cca3 === c.cca3 ? 'bg-teal-500 text-white border-teal-500 shadow-md' : 'bg-white text-gray-600 border-gray-100'">
+                            {{ c.flag }} {{ c.name.common }}
+                        </div>
+                    </div>
+                </div>
+                <div v-if="selectedCountry" class="bg-gray-50 rounded-3xl p-5 border border-gray-100 animate-up">
+                    <p class="text-[10px] font-black text-gray-400 uppercase mb-3">2. 旅遊主題</p>
+                    <input v-model="wizardInput.tripName" class="w-full bg-white p-4 rounded-2xl outline-none font-bold text-gray-700 mb-3" placeholder="Trip Name (e.g. Summer Vacation)">
+                    <div class="flex space-x-3">
+                        <input v-model="wizardInput.startDate" type="date" class="flex-1 bg-white p-4 rounded-2xl outline-none text-sm font-bold">
+                        <input v-model.number="wizardInput.days" type="number" class="w-20 bg-white p-4 rounded-2xl outline-none text-center font-bold">
+                    </div>
+                </div>
+            </div>
+            <button @click="createNewTrip" :disabled="!selectedCountry || !wizardInput.tripName" class="w-full py-6 rounded-[2rem] font-black text-white shadow-xl teal-gradient mt-4">CONFIRM TRIP</button>
+        </div>
+
+        <template v-if="view === 'detail'">
+            <header class="pt-8 px-6 pb-2 bg-white z-20">
+                <div class="flex justify-between items-end mb-4">
+                    <button @click="view = 'home'" class="text-teal-500 font-bold text-xs uppercase">← Shelf</button>
+                    <div class="text-center">
+                        <h1 class="text-lg font-black text-gray-800 uppercase tracking-tighter">{{ currentTrip.config.tripName }}</h1>
+                        <p @click="editDayTitle" class="text-[10px] text-teal-500 font-bold uppercase mt-1 cursor-pointer">
+                            {{ currentTrip.days[currentDayIndex]?.fullDate }} <i class="fa-solid fa-pen text-[7px] ml-1"></i>
+                        </p>
+                    </div>
+                    <span class="text-3xl">{{ currentTrip.config.flag }}</span>
+                </div>
+                <div class="flex space-x-6 overflow-x-auto no-scrollbar py-2 border-b border-gray-50">
+                    <div v-for="(day, index) in currentTrip.days" :key="index" @click="currentDayIndex = index"
+                        class="flex-shrink-0 flex flex-col items-center transition-all px-2 cursor-pointer"
+                        :class="currentDayIndex === index ? 'text-teal-600 font-bold scale-110' : 'text-gray-300'">
+                        <span class="text-[9px] mb-1 uppercase">{{ day.week }}</span>
+                        <span class="text-base font-bold">{{ day.dateLabel }}</span>
+                    </div>
+                </div>
+            </header>
+
+            <main class="scroll-container px-6 pt-4 no-scrollbar">
+                <div v-if="activeTab === 'schedule'" class="space-y-4 pb-20">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Itinerary</span>
+                        <button @click="openModal('schedule')" class="text-[10px] bg-teal-500 text-white px-3 py-1 rounded-full">+ ADD</button>
+                    </div>
+                    <div v-for="(item, idx) in currentTrip.schedule[currentDayIndex]" :key="idx" class="flex items-start animate-up">
+                        <div class="w-12 pt-1 text-[10px] font-bold text-teal-400">{{ item.time }}</div>
+                        <div class="flex-1 bg-gray-50 p-4 rounded-2xl border border-gray-100 mb-1 relative active:bg-gray-100" @click="openModal('schedule', item, idx)">
+                            <h3 class="font-medium text-gray-700 text-sm pr-8">{{ item.title }}</h3>
+                            <p class="text-[9px] text-gray-400 mt-1 pr-8 truncate">{{ item.location }}</p>
+                            <button @click.stop="startSingleNav(item.location)" class="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-white rounded-full shadow-sm text-teal-500">
+                                <i class="fa-solid fa-location-arrow text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="activeTab === 'money'" class="pb-20">
+                    <div class="teal-gradient rounded-3xl p-6 text-white mb-6 shadow-lg">
+                        <div class="flex justify-between mb-4 text-center">
+                            <div class="flex-1 border-r border-white/20">
+                                <p class="text-[9px] opacity-80 uppercase">Budget</p>
+                                <p class="text-lg font-bold">{{ currentTrip.config.symbol }} {{ currentTrip.config.budget.toLocaleString() }}</p>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-[9px] opacity-80 uppercase">Balance</p>
+                                <p class="text-lg font-bold" :class="{'text-red-200': calculateBalance(currentTrip) < 0}">{{ currentTrip.config.symbol }} {{ calculateBalance(currentTrip).toLocaleString() }}</p>
+                            </div>
+                        </div>
+                        <div class="flex justify-between pt-3 border-t border-white/20 text-[10px]">
+                            <span>Cash: {{ currentTrip.config.symbol }}{{ calculateStats(currentTrip).cash.toLocaleString() }}</span>
+                            <span>Card: {{ currentTrip.config.symbol }}{{ calculateStats(currentTrip).card.toLocaleString() }}</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Details</span>
+                        <div class="space-x-2">
+                            <button @click="promptBudget" class="text-[10px] bg-gray-100 text-gray-600 px-3 py-1 rounded-full">Set Budget</button>
+                            <button @click="openModal('money')" class="text-[10px] bg-teal-500 text-white px-3 py-1 rounded-full">+ Expense</button>
+                        </div>
+                    </div>
+                    <div v-for="(record, index) in currentTrip.expenses" :key="index" @click="openModal('money', record, index)"
+                        class="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center mb-2 active:bg-gray-50">
+                        <div class="flex-1">
+                            <span class="pay-tag" :class="record.type === 'Cash' ? 'tag-cash' : 'tag-card'">{{ record.methodName }}</span>
+                            <span class="text-sm text-gray-700 ml-2 font-medium">{{ record.title }}</span>
+                        </div>
+                        <div class="text-teal-600 font-bold">{{ currentTrip.config.symbol }}{{ (Number(record.amount) || 0).toLocaleString() }}</div>
+                    </div>
+                </div>
+
+                <div v-if="activeTab === 'map'" class="pt-10 px-4 text-center animate-up">
+                    <div class="bg-teal-50 rounded-3xl p-8 border border-teal-100">
+                        <i class="fa-solid fa-map-location-dot text-4xl text-teal-400 mb-4"></i>
+                        <h3 class="text-teal-800 font-bold mb-2">Smart Route</h3>
+                        <p class="text-[10px] text-teal-600/60 mb-6 uppercase tracking-widest">Connect all places today</p>
+                        <button @click="openSmartRoute" class="teal-gradient text-white w-full py-4 rounded-full font-bold shadow-lg">Start Navigation</button>
+                    </div>
+                </div>
+            </main>
+
+            <nav class="nav-bar flex justify-around items-center px-10">
+                <button @click="activeTab = 'schedule'" :class="activeTab === 'schedule' ? 'text-teal-600' : 'text-gray-300'"><i class="fa-solid fa-calendar-alt text-2xl"></i></button>
+                <button @click="activeTab = 'money'" :class="activeTab === 'money' ? 'text-teal-600' : 'text-gray-300'"><i class="fa-solid fa-wallet text-2xl"></i></button>
+                <button @click="activeTab = 'map'" :class="activeTab === 'map' ? 'text-teal-600' : 'text-gray-300'"><i class="fa-solid fa-map-marked-alt text-2xl"></i></button>
+                <button @click="deleteCurrentTrip" class="text-gray-200"><i class="fa-solid fa-trash-can text-lg"></i></button>
+            </nav>
+        </template>
+
+        <div v-if="modals.show" class="fixed inset-0 bg-black/60 z-50 flex items-end">
+            <div class="bg-white w-full rounded-t-[2.5rem] p-8 animate-up shadow-2xl">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-bold">{{ modals.isEditing ? 'Edit' : 'Add' }} {{ modals.type === 'schedule' ? 'Plan' : 'Expense' }}</h3>
+                    <button v-if="modals.isEditing" @click="deleteItem" class="text-red-400 text-xs font-bold uppercase">Delete</button>
+                </div>
+                <div v-if="modals.type === 'schedule'" class="space-y-4 mb-8">
+                    <input v-model="temp.time" type="time" class="w-full bg-gray-50 p-4 rounded-xl font-bold text-teal-600">
+                    <input v-model="temp.title" class="w-full bg-gray-50 p-4 rounded-xl" placeholder="輸入行程名稱(Enter trip name)...?">
+                    <input v-model="temp.location" class="w-full bg-gray-50 p-4 rounded-xl text-sm" placeholder="地址(address)?">
+                </div>
+                <div v-if="modals.type === 'money'" class="space-y-4 mb-8">
+                    <div class="flex space-x-2">
+                        <button @click="temp.type = 'Cash'; temp.methodName = '現金'" :class="temp.type === 'Cash' ? 'bg-teal-500 text-white shadow-md' : 'bg-gray-100'" class="flex-1 py-3 rounded-xl font-bold transition-all">Cash</button>
+                        <button @click="temp.type = 'Card'; temp.methodName = '刷卡'" :class="temp.type === 'Card' ? 'bg-teal-500 text-white shadow-md' : 'bg-gray-100'" class="flex-1 py-3 rounded-xl font-bold transition-all">Card</button>
+                    </div>
+                    <input v-model="temp.title" class="w-full bg-gray-50 p-4 rounded-xl" placeholder="Spending Title">
+                    <input v-model.number="temp.amount" type="number" class="w-full bg-gray-50 p-4 rounded-xl font-black text-2xl text-teal-600" placeholder="Amount">
+                </div>
+                <div class="flex space-x-4">
+                    <button @click="modals.show = false" class="flex-1 py-4 text-gray-400 font-bold">CANCEL</button>
+                    <button @click="saveItem" class="flex-1 teal-gradient text-white py-4 rounded-2xl font-bold shadow-md">SAVE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch } = Vue;
+        createApp({
+            setup() {
+                const view = ref('home');
+                const activeTab = ref('schedule');
+                const currentDayIndex = ref(0);
+                const allTrips = ref({});
+                const currentTripId = ref(null);
+                const countries = ref([]);
+                const searchQuery = ref('');
+                const selectedCountry = ref(null);
+                const wizardInput = ref({ tripName: '', startDate: '', days: 3 });
+                const modals = ref({ show: false, type: '', isEditing: false });
+                const temp = ref({});
+                const editIdx = ref(null);
+
+                // --- 數據加載 ---
+                const fetchCountries = async () => {
+                    try {
+                        const res = await fetch('https://restcountries.com/v3.1/all?fields=name,flag,currencies,cca3');
+                        countries.value = await res.json();
+                    } catch (e) { console.error("API Error"); }
+                };
+
+                const selectCountry = (c) => { selectedCountry.value = c; searchQuery.value = c.name.common; };
+
+                const createNewTrip = () => {
+                    const id = 'trip_' + Date.now();
+                    const currency = Object.values(selectedCountry.value.currencies)[0];
+                    const start = new Date(wizardInput.value.startDate);
+                    const daysArr = [];
+                    const scheduleObj = {};
+                    const weekNames = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+                    for(let i=0; i < wizardInput.value.days; i++) {
+                        const d = new Date(start);
+                        d.setDate(start.getDate() + i);
+                        daysArr.push({ week: weekNames[d.getDay()], dateLabel: d.getDate().toString(), fullDate: `${d.getMonth()+1}/${d.getDate()} 行程規劃` });
+                        scheduleObj[i] = [];
+                    }
+
+                    allTrips.value[id] = {
+                        config: { tripName: wizardInput.value.tripName, countryName: selectedCountry.value.name.common, flag: selectedCountry.value.flag, symbol: currency.symbol || '$', budget: 100000 },
+                        days: daysArr, schedule: scheduleObj, expenses: []
+                    };
+                    view.value = 'home';
+                };
+
+                // --- 計算與邏輯 ---
+                const calculateStats = (trip) => trip.expenses.reduce((acc, cur) => {
+                    const amt = Number(cur.amount) || 0;
+                    if (cur.type === 'Cash') acc.cash += amt; else acc.card += amt;
+                    return acc;
+                }, { cash: 0, card: 0 });
+
+                const calculateBalance = (trip) => {
+                    const total = trip.expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+                    return trip.config.budget - total;
+                };
+
+                const editDayTitle = () => {
+                    const trip = allTrips.value[currentTripId.value];
+                    const currentDay = trip.days[currentDayIndex.value];
+                    const newTitle = prompt("修改本日主題：", currentDay.fullDate);
+                    if (newTitle) currentDay.fullDate = newTitle;
+                };
+
+                // --- 操作功能 ---
+                const openModal = (type, item = null, index = null) => {
+                    modals.value = { show: true, type, isEditing: !!item };
+                    editIdx.value = index;
+                    temp.value = item ? { ...item } : (type === 'schedule' ? { time: '12:00', title: '', location: '' } : { title: '', amount: '', type: 'Cash', methodName: '現金' });
+                };
+
+                const saveItem = () => {
+                    const trip = allTrips.value[currentTripId.value];
+                    if (modals.value.type === 'schedule') {
+                        const list = trip.schedule[currentDayIndex.value];
+                        if (modals.value.isEditing) list[editIdx.value] = { ...temp.value };
+                        else list.push({ ...temp.value });
+                        list.sort((a,b) => a.time.localeCompare(b.time));
+                    } else {
+                        if (modals.value.isEditing) trip.expenses[editIdx.value] = { ...temp.value };
+                        else trip.expenses.push({ ...temp.value });
+                    }
+                    modals.value.show = false;
+                };
+
+                const deleteItem = () => {
+                    const trip = allTrips.value[currentTripId.value];
+                    if (modals.value.type === 'schedule') trip.schedule[currentDayIndex.value].splice(editIdx.value, 1);
+                    else trip.expenses.splice(editIdx.value, 1);
+                    modals.value.show = false;
+                };
+
+                const promptBudget = () => {
+                    const trip = allTrips.value[currentTripId.value];
+                    const nb = prompt("New Budget:", trip.config.budget);
+                    if (nb) trip.config.budget = Number(nb);
+                };
+
+                const startSingleNav = (loc) => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`, '_blank');
+                const openSmartRoute = () => {
+                    const locs = allTrips.value[currentTripId.value].schedule[currentDayIndex.value];
+                    if (!locs || locs.length < 1) return alert("Empty!");
+                    const origin = encodeURIComponent(locs[0].location);
+                    const dest = encodeURIComponent(locs[locs.length-1].location);
+                    const ways = locs.slice(1, -1).map(l => encodeURIComponent(l.location)).join('|');
+                    window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${ways}&travelmode=driving`, '_blank');
+                };
+
+                onMounted(() => {
+                    fetchCountries();
+                    const saved = localStorage.getItem('global_passport_master_v1');
+                    if (saved) allTrips.value = JSON.parse(saved);
+                });
+
+                watch(allTrips, (v) => localStorage.setItem('global_passport_master_v1', JSON.stringify(v)), { deep: true });
+
+                return {
+                    view, allTrips, searchQuery, filteredCountries: computed(() => searchQuery.value.length < 2 ? [] : countries.value.filter(c => c.name.common.toLowerCase().includes(searchQuery.value.toLowerCase())).slice(0, 4)),
+                    selectedCountry, wizardInput, activeTab, currentDayIndex, modals, temp,
+                    currentTrip: computed(() => allTrips.value[currentTripId.value]),
+                    openWizard: () => { view.value = 'wizard'; selectedCountry.value = null; searchQuery.value = ''; },
+                    selectCountry, createNewTrip, calculateStats, calculateBalance, editDayTitle,
+                    enterTrip: (id) => { currentTripId.value = id; currentDayIndex.value = 0; view.value = 'detail'; },
+                    deleteCurrentTrip: () => { if(confirm('Delete?')) { delete allTrips.value[currentTripId.value]; view.value = 'home'; } },
+                    openModal, saveItem, deleteItem, promptBudget, startSingleNav, openSmartRoute
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
